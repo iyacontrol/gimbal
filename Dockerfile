@@ -13,8 +13,14 @@ COPY pkg pkg
 RUN CGO_ENABLED=0 GOOS=linux GOFLAGS=-ldflags=-w go build -o /go/bin/kubernetes-discoverer -ldflags=-s -v github.com/projectcontour/gimbal/cmd/kubernetes-discoverer
 RUN CGO_ENABLED=0 GOOS=linux GOFLAGS=-ldflags=-w go build -o /go/bin/openstack-discoverer -ldflags=-s -v github.com/projectcontour/gimbal/cmd/openstack-discoverer
 
-FROM scratch AS final
+FROM alpine:3.11 AS final
+RUN apk -Uuv add groff less python py-pip \
+  && pip install awscli \
+  && apk --purge -v del py-pip \
+  && rm /var/cache/apk/*
+
 COPY --from=build /go/bin/kubernetes-discoverer /kubernetes-discoverer
 COPY --from=build /go/bin/openstack-discoverer /openstack-discoverer
+
 
 ENTRYPOINT [ "/kubernetes-discoverer" ]

@@ -17,6 +17,7 @@ import (
 	"fmt"
 
 	"github.com/projectcontour/gimbal/pkg/translator"
+	"github.com/projectcontour/gimbal/pkg/util"
 
 	"github.com/sirupsen/logrus"
 
@@ -49,15 +50,21 @@ type Controller struct {
 	metrics         localmetrics.DiscovererMetrics
 
 	backendName string
+	// skip
+	skipNamespaces []string
 }
 
 // NewController returns a new NewController
 func NewController(log *logrus.Logger, gimbalKubeClient kubernetes.Interface, kubeInformerFactory kubeinformers.SharedInformerFactory,
-	backendName string, threadiness int, metrics localmetrics.DiscovererMetrics) *Controller {
+	backendName string, threadiness int, metrics localmetrics.DiscovererMetrics, skipNamespaces []string) *Controller {
 
 	// obtain references to shared index informers for the services types.
 	serviceInformer := kubeInformerFactory.Core().V1().Services()
 	endpointsInformer := kubeInformerFactory.Core().V1().Endpoints()
+
+	if len(skipNamespaces) == 0 {
+		skipNamespaces = append(skipNamespaces, kubesystemNamespace)
+	}
 
 	c := &Controller{
 		Logger:          log,
@@ -68,6 +75,8 @@ func NewController(log *logrus.Logger, gimbalKubeClient kubernetes.Interface, ku
 		serviceLister:   serviceInformer.Lister(),
 		endpointsLister: endpointsInformer.Lister(),
 		metrics:         metrics,
+
+		skipNamespaces: skipNamespaces,
 	}
 
 	// Set up an event handler for when Service resources change.
@@ -100,7 +109,7 @@ func NewController(log *logrus.Logger, gimbalKubeClient kubernetes.Interface, ku
 }
 
 func (c *Controller) addService(service *v1.Service) {
-	if !skipProcessing(service.GetName(), service.GetNamespace(), service.ObjectMeta.Labels) {
+	if !skipProcessing(service.GetName(), service.GetNamespace(), service.ObjectMeta.Labels, c.skipNamespaces) {
 		svc := translateService(service, c.backendName)
 		c.syncqueue.Enqueue(sync.AddServiceAction(svc))
 		c.writeServiceMetrics(service)
@@ -108,7 +117,7 @@ func (c *Controller) addService(service *v1.Service) {
 }
 
 func (c *Controller) updateService(service *v1.Service) {
-	if !skipProcessing(service.GetName(), service.GetNamespace(), service.ObjectMeta.Labels) {
+	if !skipProcessing(service.GetName(), service.GetNamespace(), service.ObjectMeta.Labels, c.skipNamespaces) {
 		svc := translateService(service, c.backendName)
 		c.syncqueue.Enqueue(sync.UpdateServiceAction(svc))
 		c.writeServiceMetrics(service)
@@ -116,7 +125,7 @@ func (c *Controller) updateService(service *v1.Service) {
 }
 
 func (c *Controller) deleteService(service *v1.Service) {
-	if !skipProcessing(service.GetName(), service.GetNamespace(), service.ObjectMeta.Labels) {
+	if !skipProcessing(service.GetName(), service.GetNamespace(), service.ObjectMeta.Labels, c.skipNamespaces) {
 		svc := translateService(service, c.backendName)
 		c.syncqueue.Enqueue(sync.DeleteServiceAction(svc))
 		c.writeServiceMetrics(service)
@@ -124,7 +133,7 @@ func (c *Controller) deleteService(service *v1.Service) {
 }
 
 func (c *Controller) addEndpoints(endpoints *v1.Endpoints) {
-	if !skipProcessing(endpoints.GetName(), endpoints.GetNamespace(), endpoints.ObjectMeta.Labels) {
+	if !skipProcessing(endpoints.GetName(), endpoints.GetNamespace(), endpoints.ObjectMeta.Labels, c.skipNamespaces) {
 		ep := translateEndpoints(endpoints, c.backendName)
 		c.syncqueue.Enqueue(sync.AddEndpointsAction(ep, endpoints.GetName()))
 		c.writeEndpointsMetrics(endpoints)
@@ -132,7 +141,7 @@ func (c *Controller) addEndpoints(endpoints *v1.Endpoints) {
 }
 
 func (c *Controller) updateEndpoints(endpoints *v1.Endpoints) {
-	if !skipProcessing(endpoints.GetName(), endpoints.GetNamespace(), endpoints.ObjectMeta.Labels) {
+	if !skipProcessing(endpoints.GetName(), endpoints.GetNamespace(), endpoints.ObjectMeta.Labels, c.skipNamespaces) {
 		ep := translateEndpoints(endpoints, c.backendName)
 		c.syncqueue.Enqueue(sync.UpdateEndpointsAction(ep, endpoints.GetName()))
 		c.writeEndpointsMetrics(endpoints)
@@ -140,7 +149,7 @@ func (c *Controller) updateEndpoints(endpoints *v1.Endpoints) {
 }
 
 func (c *Controller) deleteEndpoints(endpoints *v1.Endpoints) {
-	if !skipProcessing(endpoints.GetName(), endpoints.GetNamespace(), endpoints.ObjectMeta.Labels) {
+	if !skipProcessing(endpoints.GetName(), endpoints.GetNamespace(), endpoints.ObjectMeta.Labels, c.skipNamespaces) {
 		ep := translateEndpoints(endpoints, c.backendName)
 		c.syncqueue.Enqueue(sync.DeleteEndpointsAction(ep, endpoints.GetName()))
 		c.writeEndpointsMetrics(endpoints)
@@ -148,9 +157,9 @@ func (c *Controller) deleteEndpoints(endpoints *v1.Endpoints) {
 }
 
 // skipProcessing determines if this should be processed or not
-func skipProcessing(name, namespace string, labels map[string]string) bool {
+func skipProcessing(name, namespace string, labels map[string]string, skipNamespaces []string) bool {
 	_, gimbalLabel := labels[translator.GimbalLabelBackend]
-	return gimbalLabel || namespace == kubesystemNamespace || (name == kubesystemService && namespace == "default")
+	return gimbalLabel || util.Find(skipNamespaces, namespace) || (name == kubesystemService && namespace == "default")
 }
 
 func (c *Controller) writeServiceMetrics(svc *v1.Service) {

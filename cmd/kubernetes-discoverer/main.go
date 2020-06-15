@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/projectcontour/gimbal/pkg/buildinfo"
@@ -45,6 +46,7 @@ var (
 	discovererMetrics     localmetrics.DiscovererMetrics
 	gimbalKubeClientQPS   float64
 	gimbalKubeClientBurst int
+	skipNamespaces        string
 )
 
 func init() {
@@ -58,6 +60,7 @@ func init() {
 	flag.IntVar(&prometheusListenPort, "prometheus-listen-address", 8080, "The address to listen on for Prometheus HTTP requests")
 	flag.Float64Var(&gimbalKubeClientQPS, "gimbal-client-qps", 5, "The maximum queries per second (QPS) that can be performed on the Gimbal Kubernetes API server")
 	flag.IntVar(&gimbalKubeClientBurst, "gimbal-client-burst", 10, "The maximum number of queries that can be performed on the Gimbal Kubernetes API server during a burst")
+	flag.StringVar(&skipNamespaces, "skip-namespaces", "", "Skip service and endpoint of these namespaces, if  multiple namespace, comma separated")
 	flag.Parse()
 }
 
@@ -80,6 +83,7 @@ func main() {
 	log.Infof("Resync interval: %v", resyncInterval)
 	log.Infof("Gimbal kubernetes client QPS: %v", gimbalKubeClientQPS)
 	log.Infof("Gimbal kubernetes client burst: %d", gimbalKubeClientBurst)
+	log.Infof("Skip namespaces: %s", skipNamespaces)
 
 	// Init prometheus metrics
 	discovererMetrics = localmetrics.NewMetrics("kubernetes", backendName)
@@ -118,7 +122,9 @@ func main() {
 
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(k8sDiscovererClient, resyncInterval)
 
-	c := k8s.NewController(log, gimbalKubeClient, kubeInformerFactory, backendName, numProcessThreads, discovererMetrics)
+	skips := strings.Split(skipNamespaces, ",")
+
+	c := k8s.NewController(log, gimbalKubeClient, kubeInformerFactory, backendName, numProcessThreads, discovererMetrics, skips)
 	if err != nil {
 		log.Fatal("Could not init Controller! ", err)
 	}

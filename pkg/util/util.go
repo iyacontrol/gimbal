@@ -33,3 +33,14 @@ func GetFormatter() *logrus.TextFormatter {
 func IsInvalidBackendName(backendname string) bool {
 	return !backendNameRegex.MatchString(backendname)
 }
+
+// Find takes a slice and looks for an element in it. If found it will
+// return true, otherwise it will return a bool of false.
+func Find(slice []string, val string) bool {
+	for _, item := range slice {
+		if item == val {
+			return true
+		}
+	}
+	return false
+}
