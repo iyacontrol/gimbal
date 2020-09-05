@@ -18,10 +18,6 @@ import (
 	"github.com/projectcontour/gimbal/pkg/translator"
 )
 
-const (
-	ConsulNamespace = "consul"
-)
-
 // Endpoints represents a v1.Endpoints + upstream name to facilicate metrics
 type Endpoints struct {
 	endpoints    v1.Endpoints
@@ -51,10 +47,12 @@ type Reconciler struct {
 	syncqueue  sync.Queue
 
 	tagFilter string
+
+	namespace string
 }
 
 func NewReconciler(log *logrus.Logger, metrics localmetrics.DiscovererMetrics, backendName string,
-	gimbalKubeClient kubernetes.Interface, cfgFile string, syncPeriod time.Duration, queueWorkers int, filter string) (*Reconciler, error) {
+	gimbalKubeClient kubernetes.Interface, cfgFile string, syncPeriod time.Duration, queueWorkers int, filter, namespace string) (*Reconciler, error) {
 	yamlFile, err := ioutil.ReadFile(cfgFile)
 	if err != nil {
 		return nil, err
@@ -96,6 +94,7 @@ func NewReconciler(log *logrus.Logger, metrics localmetrics.DiscovererMetrics, b
 		syncPeriod:       syncPeriod,
 		syncqueue:        sync.NewQueue(log, gimbalKubeClient, queueWorkers, metrics),
 		tagFilter:        filter,
+		namespace:        namespace,
 	}, nil
 }
 
@@ -186,16 +185,16 @@ func (r *Reconciler) reconcile() {
 
 	// Get all services and endpoints that exist in the corresponding namespace
 	clusterLabelSelector := fmt.Sprintf("%s=%s", translator.GimbalLabelBackend, r.backendName)
-	currentServices, err := r.gimbalKubeClient.CoreV1().Services(ConsulNamespace).List(metav1.ListOptions{LabelSelector: clusterLabelSelector})
+	currentServices, err := r.gimbalKubeClient.CoreV1().Services(r.namespace).List(metav1.ListOptions{LabelSelector: clusterLabelSelector})
 	if err != nil {
 		r.metrics.GenericMetricError("ListServicesInNamespace")
-		log.Errorf("error listing services in namespace %q: %v", ConsulNamespace, err)
+		log.Errorf("error listing services in namespace %q: %v", r.namespace, err)
 	}
 
-	currentk8sEndpoints, err := r.gimbalKubeClient.CoreV1().Endpoints(ConsulNamespace).List(metav1.ListOptions{LabelSelector: clusterLabelSelector})
+	currentk8sEndpoints, err := r.gimbalKubeClient.CoreV1().Endpoints(r.namespace).List(metav1.ListOptions{LabelSelector: clusterLabelSelector})
 	if err != nil {
 		r.metrics.GenericMetricError("ListEndpointsInNamespace")
-		log.Errorf("error listing endpoints in namespace:%q: %v", ConsulNamespace, err)
+		log.Errorf("error listing endpoints in namespace:%q: %v", r.namespace, err)
 	}
 
 	// Convert the k8s list to type []Endpoints so make comparison easier
@@ -205,17 +204,17 @@ func (r *Reconciler) reconcile() {
 	}
 
 	// Reconcile current state with desired state
-	desiredSvcs := kubeServices(r.backendName, ConsulNamespace, svcs)
+	desiredSvcs := kubeServices(r.backendName, r.namespace, svcs)
 	r.reconcileSvcs(desiredSvcs, currentServices.Items)
 
-	desiredEndpoints := kubeEndpoints(r.backendName, ConsulNamespace, svcs)
+	desiredEndpoints := kubeEndpoints(r.backendName, r.namespace, svcs)
 	r.reconcileEndpoints(desiredEndpoints, currentEndpoints)
 
 	// Log upstream /invalid services to prometheus
 	totalUpstreamServices := len(svcs)
 	totalInvalidServices := totalUpstreamServices - len(svcs)
-	r.metrics.DiscovererUpstreamServicesMetric(ConsulNamespace, totalUpstreamServices)
-	r.metrics.DiscovererInvalidServicesMetric(ConsulNamespace, totalInvalidServices)
+	r.metrics.DiscovererUpstreamServicesMetric(r.namespace, totalUpstreamServices)
+	r.metrics.DiscovererInvalidServicesMetric(r.namespace, totalInvalidServices)
 
 	// Log to Prometheus the cycle duration
 	r.metrics.CycleDurationMetric(time.Since(start))

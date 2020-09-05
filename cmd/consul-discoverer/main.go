@@ -22,6 +22,7 @@ import (
 var (
 	printVersion            bool
 	gimbalKubeCfgFile       string
+	gimbaKubeNamespace      string
 	discovererConsulCfgFile string
 	backendName             string
 	debug                   bool
@@ -37,6 +38,7 @@ var (
 func init() {
 	flag.BoolVar(&printVersion, "version", false, "Show version and quit")
 	flag.StringVar(&gimbalKubeCfgFile, "gimbal-kubecfg-file", "", "Location of kubecfg file for access to gimbal system kubernetes api, defaults to service account tokens")
+	flag.StringVar(&gimbaKubeNamespace, "gimbal-kube-namespace", "consul", "consul discoverer will deal with svc and ep in this namespace, default is consul")
 	flag.StringVar(&discovererConsulCfgFile, "discover-consulcfg-file", "", "Location of consulcfg file for access to remote discover consul api")
 	flag.StringVar(&backendName, "backend-name", "", "Name of backend (must be unique)")
 	flag.BoolVar(&debug, "debug", false, "Enable debug logging.")
@@ -94,7 +96,7 @@ func main() {
 		log.Fatal("Could not init k8sclient! ", err)
 	}
 
-	discoverer, err := consul.NewReconciler(log, discovererMetrics, backendName, gimbalKubeClient, discovererConsulCfgFile, reconciliationPeriod, numProcessThreads, discoverererTagFilter)
+	discoverer, err := consul.NewReconciler(log, discovererMetrics, backendName, gimbalKubeClient, discovererConsulCfgFile, reconciliationPeriod, numProcessThreads, discoverererTagFilter, gimbaKubeNamespace)
 	if err != nil {
 		log.Fatal("Could not init Consulclient! ", err)
 	}
@@ -118,7 +120,7 @@ func main() {
 		}
 	}()
 
-	log.Info("Starting  consul discoverer")
+	log.Info("Starting Consul discoverer")
 	go discoverer.Run(stopCh)
 
 	<-stopCh
