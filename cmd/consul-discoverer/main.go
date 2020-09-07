@@ -43,7 +43,7 @@ func init() {
 	flag.StringVar(&backendName, "backend-name", "", "Name of backend (must be unique)")
 	flag.BoolVar(&debug, "debug", false, "Enable debug logging.")
 	flag.StringVar(&discoverererTagFilter, "discoverer-consul-tag-filter", "gateway", "The tag filter is used get some services which tag contains tag filetr from consul")
-	flag.DurationVar(&reconciliationPeriod, "reconciliation-period", 20*time.Second, "The interval of time between reconciliation loop runs.")
+	flag.DurationVar(&reconciliationPeriod, "reconciliation-period", 30*time.Second, "The interval of time between reconciliation loop runs.")
 	flag.IntVar(&numProcessThreads, "num-threads", 2, "Specify number of threads to use when processing queue items.")
 	flag.IntVar(&prometheusListenPort, "prometheus-listen-address", 8080, "The address to listen on for Prometheus HTTP requests")
 	flag.Float64Var(&gimbalKubeClientQPS, "gimbal-client-qps", 5, "The maximum queries per second (QPS) that can be performed on the Gimbal Kubernetes API server")

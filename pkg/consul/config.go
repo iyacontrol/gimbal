@@ -5,8 +5,6 @@ type ConsulConfig struct {
 	Scheme string
 	Token  string
 	TLS    ConsulTlS
-
-	TagFilter string
 }
 
 type ConsulTlS struct {
